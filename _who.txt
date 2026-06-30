@@ -1,2 +1,0 @@
-Vercel CLI 54.18.6 (Node.js 22.16.0)
-shahriar-17
