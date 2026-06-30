@@ -1,0 +1,32 @@
+{
+  "name": "@b2b/notification",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Notification Service (Node.js + TypeScript): consumes notification events, delivers in-app/email/SMS with retry+backoff, and renders content in the user's language (en/bn).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@b2b/shared-node": "*",
+    "express": "^4.19.2",
+    "pg": "^8.13.1",
+    "redis": "^4.7.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.15",
+    "@types/pg": "^8.11.10",
+    "fast-check": "^3.23.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.8"
+  }
+}

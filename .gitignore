@@ -1,0 +1,62 @@
+# ---------- Node ----------
+node_modules/
+dist/
+build/
+coverage/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.eslintcache
+
+# ---------- Environment / secrets ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ---------- Java / Gradle ----------
+.gradle/
+**/build/
+!src/**/build/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.uv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+
+# ---------- IDE / OS ----------
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# ---------- Docker / data ----------
+docker-data/
+
+# ---------- Kiro (excluded from the public repo) ----------
+.kiro/
+
+# ---------- Local-only compose override (contains a dev JWT keypair) ----------
+docker-compose.override.yml

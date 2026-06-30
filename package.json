@@ -1,0 +1,34 @@
+{
+  "name": "b2b-wholesale-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Polyglot microservices B2B wholesale marketplace for the Bangladeshi market.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*",
+    "services/auth",
+    "services/bff",
+    "services/payment",
+    "services/notification",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build --workspace @b2b/shared-node",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,231 @@
+# ============================================================================
+# Render Blueprint — backend deployment for B2B-Wholesale-Hub (Req 18.3, 20.4).
+#
+# Place this file at the repository root (or point the Render Blueprint at
+# `deploy/render.yaml`) and create a Blueprint Instance in the Render dashboard.
+#
+# Topology:
+#   - Each microservice is its own Docker web service, independently scalable
+#     (Req 18.3). Only the BFF is public; all others are PRIVATE services
+#     reachable on Render's private network at `http://<name>:<port>`.
+#   - Managed Render PostgreSQL per service (auth, inventory, notifications,
+#     payment) and a managed Render Key Value (Redis) instance.
+#   - ElasticSearch is NOT a native Render managed product — see the notes at
+#     the bottom for hosting options; its URL is supplied via the env group.
+#   - Secrets (DB URLs are auto-wired; JWT keys + provider secrets) live in a
+#     Render environment group `b2b-secrets` (Req 19.4). HTTPS is terminated at
+#     Render's edge automatically for the public BFF.
+#
+# Docker builds: Node services + frontend build from the repo root context with
+# their per-service Dockerfile; inventory and search build from their own dirs.
+# ============================================================================
+
+databases:
+  - name: b2b-auth-db
+    databaseName: auth
+    user: auth
+    plan: basic-256mb
+  - name: b2b-inventory-db
+    databaseName: inventory
+    user: inventory
+    plan: basic-256mb
+  - name: b2b-notif-db
+    databaseName: notifications
+    user: notifications
+    plan: basic-256mb
+  - name: b2b-payment-db
+    databaseName: payment
+    user: payment
+    plan: basic-256mb
+
+# Shared, non-DB configuration + secrets injected into the services below.
+envVarGroups:
+  - name: b2b-secrets
+    envVars:
+      # RS256 keypair — set as secret values in the Render dashboard (do not commit).
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+      # Payment provider secrets (Req 19.4).
+      - key: BKASH_API_KEY
+        sync: false
+      - key: BKASH_API_SECRET
+        sync: false
+      - key: NAGAD_MERCHANT_ID
+        sync: false
+      - key: NAGAD_API_SECRET
+        sync: false
+      - key: SSLCOMMERZ_STORE_ID
+        sync: false
+      - key: SSLCOMMERZ_STORE_PASSWORD
+        sync: false
+      # ElasticSearch endpoint (managed/external — see notes). Set in dashboard.
+      - key: ELASTICSEARCH_URL
+        sync: false
+      - key: LOG_LEVEL
+        value: info
+
+services:
+  # --------------------------- Managed Redis ---------------------------------
+  - type: keyvalue
+    name: b2b-redis
+    plan: starter
+    ipAllowList: []          # private only — no external connections
+    # Reservation expiry reaper relies on keyspace notifications.
+    # Configure `notify-keyspace-events Ex` in the dashboard (Render Key Value
+    # exposes a maxmemory-policy/config panel).
+
+  # ------------------------------ Auth (private) -----------------------------
+  - type: pserv
+    name: auth
+    runtime: docker
+    dockerfilePath: services/auth/Dockerfile
+    dockerContext: .
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_PORT
+        value: "3001"
+      - key: AUTH_DB_URL
+        fromDatabase:
+          name: b2b-auth-db
+          property: connectionString
+      - fromGroup: b2b-secrets
+
+  # --------------------------- Inventory (private) ----------------------------
+  - type: pserv
+    name: inventory
+    runtime: docker
+    dockerfilePath: services/inventory/Dockerfile
+    dockerContext: services/inventory
+    plan: standard
+    autoDeploy: true
+    envVars:
+      - key: INVENTORY_PORT
+        value: "8081"
+      - key: INVENTORY_DB_URL
+        fromDatabase:
+          name: b2b-inventory-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: b2b-redis
+          type: keyvalue
+          property: connectionString
+      - fromGroup: b2b-secrets
+
+  # ---------------------------- Search (private) ------------------------------
+  - type: pserv
+    name: search
+    runtime: docker
+    dockerfilePath: services/search/Dockerfile
+    dockerContext: services/search
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: SEARCH_PORT
+        value: "8000"
+      - key: REDIS_URL
+        fromService:
+          name: b2b-redis
+          type: keyvalue
+          property: connectionString
+      # ELASTICSEARCH_URL comes from the b2b-secrets env group.
+      - fromGroup: b2b-secrets
+
+  # ---------------------------- Payment (private) -----------------------------
+  - type: pserv
+    name: payment
+    runtime: docker
+    dockerfilePath: services/payment/Dockerfile
+    dockerContext: .
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PAYMENT_PORT
+        value: "3003"
+      - key: PAYMENT_DB_URL
+        fromDatabase:
+          name: b2b-payment-db
+          property: connectionString
+      - key: INVENTORY_SERVICE_URL
+        fromService:
+          name: inventory
+          type: pserv
+          property: hostport     # -> inventory:8081 on the private network
+      - key: REDIS_URL
+        fromService:
+          name: b2b-redis
+          type: keyvalue
+          property: connectionString
+      - fromGroup: b2b-secrets
+
+  # -------------------------- Notification (private) --------------------------
+  - type: pserv
+    name: notification
+    runtime: docker
+    dockerfilePath: services/notification/Dockerfile
+    dockerContext: .
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NOTIFICATION_PORT
+        value: "3002"
+      - key: NOTIF_DB_URL
+        fromDatabase:
+          name: b2b-notif-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: b2b-redis
+          type: keyvalue
+          property: connectionString
+      - key: EMAIL_ENABLED
+        value: "false"
+      - key: SMS_ENABLED
+        value: "false"
+      - fromGroup: b2b-secrets
+
+  # ------------------------------ BFF (PUBLIC) --------------------------------
+  # The only public web service. Render terminates TLS at the edge (Req 19.2/20.5).
+  - type: web
+    name: bff
+    runtime: docker
+    dockerfilePath: services/bff/Dockerfile
+    dockerContext: .
+    plan: standard
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BFF_PORT
+        value: "8080"
+      - key: AUTH_SERVICE_URL
+        fromService: { name: auth, type: pserv, property: hostport }
+      - key: INVENTORY_SERVICE_URL
+        fromService: { name: inventory, type: pserv, property: hostport }
+      - key: SEARCH_SERVICE_URL
+        fromService: { name: search, type: pserv, property: hostport }
+      - key: PAYMENT_SERVICE_URL
+        fromService: { name: payment, type: pserv, property: hostport }
+      - fromGroup: b2b-secrets
+
+# ============================================================================
+# ElasticSearch on Render — notes
+# ----------------------------------------------------------------------------
+# Render has no first-party managed ElasticSearch. Options, cheapest effort first:
+#   1. Elastic Cloud / Bonsai / a managed OpenSearch cluster; set ELASTICSEARCH_URL
+#      (and any auth header) in the b2b-secrets env group. RECOMMENDED for prod.
+#   2. A private Render Docker service running elasticsearch:8.x with a persistent
+#      disk. Add it as another `pserv` with a mounted disk; note single-node ES is
+#      not HA. (Kept out of this blueprint to avoid an under-provisioned default.)
+# The Search service only needs ELASTICSEARCH_URL to point at a reachable cluster.
+# ============================================================================

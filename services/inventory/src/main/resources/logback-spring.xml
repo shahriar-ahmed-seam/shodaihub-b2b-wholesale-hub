@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Structured JSON logging for the Inventory Service. Every line is a JSON object that includes the
+  MDC correlation id (set by CorrelationIdFilter) so a single request can be traced across services.
+  (Req 20.2)
+-->
+<configuration>
+  <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <includeMdcKeyName>correlationId</includeMdcKeyName>
+      <customFields>{"service":"inventory"}</customFields>
+    </encoder>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="JSON"/>
+  </root>
+</configuration>

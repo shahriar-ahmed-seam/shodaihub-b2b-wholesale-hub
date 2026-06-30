@@ -1,0 +1,65 @@
+// Inventory Service — Java 21 + Spring Boot 3.
+// NOTE: Java 24 is installed on this machine and is backward compatible; we pin the
+// language/bytecode target to Java 21 (the LTS the design fixes) via the toolchain below.
+// Full application code (catalog, pricing, reservations, checkout) lands in Milestones 4-6.
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.4'
+    id 'io.spring.dependency-management' version '1.1.6'
+    // Spotless enforces Java formatting (google-java-format) — the Java equivalent of
+    // Prettier/ESLint used in the Node workspaces.
+    id 'com.diffplug.spotless' version '6.25.0'
+}
+
+group = 'com.b2bwholesalehub'
+version = '0.1.0'
+
+java {
+    toolchain {
+        // Compile and run against Java 21 even though Java 24 is the installed JDK.
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // Spring Data Redis (Lettuce client) backs the reservation/locking system (Milestone 5).
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    // Structured JSON logging with MDC (correlation id) — the Spring equivalent of the shared
+    // Node JSON logger. (Req 20.2)
+    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // jqwik — property-based testing library for the Inventory Service (min 100 iterations).
+    testImplementation 'net.jqwik:jqwik:1.9.0'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.1'
+    testImplementation 'org.testcontainers:postgresql:1.20.1'
+    // Real Redis (redis:7) for reservation/locking property + integration tests (Milestone 5).
+    testImplementation 'org.testcontainers:testcontainers:1.20.1'
+    // Real in-memory DataSource for the readiness-probe unit test (no mocks).
+    testImplementation 'com.h2database:h2'
+}
+
+spotless {
+    java {
+        googleJavaFormat('1.23.0')
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

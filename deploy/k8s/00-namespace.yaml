@@ -1,0 +1,16 @@
+# ============================================================================
+# Namespace for the B2B-Wholesale-Hub stack.
+#
+# Apply the whole stack with:
+#     kubectl apply -f deploy/k8s/
+#
+# Ordering: filenames are numbered so a naive `kubectl apply -f deploy/k8s/`
+# creates the namespace, config, and secrets before the workloads that consume
+# them. (kubectl applies a directory in lexical order.)
+# ============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: b2b
+  labels:
+    app.kubernetes.io/part-of: b2b-wholesale-hub

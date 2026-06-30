@@ -1,0 +1,294 @@
+# ============================================================================
+# B2B-Wholesale-Hub — full local stack (Req 20.3: Local Development).
+#
+# Datastores (Postgres x3, Redis, ElasticSearch) run as images and are ready to
+# use immediately:
+#     docker compose up -d postgres-auth postgres-inventory postgres-notif redis elasticsearch
+#
+# The application services below use `build:` contexts pointing at each service
+# directory. Their Dockerfiles are added in Milestone 11 — until then, build the
+# datastores only (command above) or run the app services from source. The
+# compose file itself is valid (`docker compose config` passes).
+#
+# Configuration comes from the root `.env` (copy from `.env.example`).
+# ============================================================================
+
+name: b2b-wholesale-hub
+
+networks:
+  b2b-net:
+    driver: bridge
+
+volumes:
+  pg-auth-data:
+  pg-inventory-data:
+  pg-notif-data:
+  pg-payment-data:
+  redis-data:
+  es-data:
+
+services:
+  # ----------------------------- Data stores -----------------------------
+  postgres-auth:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_AUTH_DB:-auth}
+      POSTGRES_USER: ${POSTGRES_AUTH_USER:-auth}
+      POSTGRES_PASSWORD: ${POSTGRES_AUTH_PASSWORD:-auth_local_pw}
+    ports:
+      - "${POSTGRES_AUTH_PORT:-5432}:5432"
+    volumes:
+      - pg-auth-data:/var/lib/postgresql/data
+    networks:
+      - b2b-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_AUTH_USER:-auth} -d ${POSTGRES_AUTH_DB:-auth}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres-inventory:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_INVENTORY_DB:-inventory}
+      POSTGRES_USER: ${POSTGRES_INVENTORY_USER:-inventory}
+      POSTGRES_PASSWORD: ${POSTGRES_INVENTORY_PASSWORD:-inventory_local_pw}
+    ports:
+      - "${POSTGRES_INVENTORY_PORT:-5433}:5432"
+    volumes:
+      - pg-inventory-data:/var/lib/postgresql/data
+    networks:
+      - b2b-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_INVENTORY_USER:-inventory} -d ${POSTGRES_INVENTORY_DB:-inventory}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres-notif:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_NOTIF_DB:-notifications}
+      POSTGRES_USER: ${POSTGRES_NOTIF_USER:-notifications}
+      POSTGRES_PASSWORD: ${POSTGRES_NOTIF_PASSWORD:-notif_local_pw}
+    ports:
+      - "${POSTGRES_NOTIF_PORT:-5434}:5432"
+    volumes:
+      - pg-notif-data:/var/lib/postgresql/data
+    networks:
+      - b2b-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_NOTIF_USER:-notifications} -d ${POSTGRES_NOTIF_DB:-notifications}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres-payment:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_PAYMENT_DB:-payment}
+      POSTGRES_USER: ${POSTGRES_PAYMENT_USER:-payment}
+      POSTGRES_PASSWORD: ${POSTGRES_PAYMENT_PASSWORD:-payment_local_pw}
+    ports:
+      - "${POSTGRES_PAYMENT_PORT:-5435}:5432"
+    volumes:
+      - pg-payment-data:/var/lib/postgresql/data
+    networks:
+      - b2b-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_PAYMENT_USER:-payment} -d ${POSTGRES_PAYMENT_DB:-payment}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes", "--notify-keyspace-events", "Ex"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - b2b-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - b2b-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  # --------------------------- Application services ---------------------------
+  # NOTE: Dockerfiles for these services are added in Milestone 11. The build
+  # contexts below keep the topology explicit and the compose file valid.
+  auth:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      AUTH_PORT: 3001
+      AUTH_DB_URL: ${AUTH_DB_URL:-postgres://auth:auth_local_pw@postgres-auth:5432/auth}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${AUTH_PORT:-3001}:3001"
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+    networks:
+      - b2b-net
+
+  inventory:
+    build:
+      context: ./services/inventory
+      dockerfile: Dockerfile
+    environment:
+      INVENTORY_PORT: 8081
+      INVENTORY_DB_URL: ${INVENTORY_DB_URL:-jdbc:postgresql://postgres-inventory:5432/inventory}
+      INVENTORY_DB_USER: ${INVENTORY_DB_USER:-inventory}
+      INVENTORY_DB_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_local_pw}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${INVENTORY_PORT:-8081}:8081"
+    depends_on:
+      postgres-inventory:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - b2b-net
+
+  search:
+    build:
+      context: ./services/search
+      dockerfile: Dockerfile
+    environment:
+      SEARCH_PORT: 8000
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${SEARCH_PORT:-8000}:8000"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - b2b-net
+
+  notification:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NOTIFICATION_PORT: 3002
+      NOTIF_DB_URL: ${NOTIF_DB_URL:-postgres://notifications:notif_local_pw@postgres-notif:5432/notifications}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
+      SMS_ENABLED: ${SMS_ENABLED:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${NOTIFICATION_PORT:-3002}:3002"
+    depends_on:
+      postgres-notif:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - b2b-net
+
+  payment:
+    build:
+      context: .
+      dockerfile: services/payment/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PAYMENT_PORT: 3003
+      PAYMENT_DB_URL: ${PAYMENT_DB_URL:-postgres://payment:payment_local_pw@postgres-payment:5432/payment}
+      INVENTORY_SERVICE_URL: ${INVENTORY_SERVICE_URL:-http://inventory:8081}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      BKASH_API_KEY: ${BKASH_API_KEY:-}
+      BKASH_API_SECRET: ${BKASH_API_SECRET:-}
+      NAGAD_MERCHANT_ID: ${NAGAD_MERCHANT_ID:-}
+      NAGAD_API_SECRET: ${NAGAD_API_SECRET:-}
+      SSLCOMMERZ_STORE_ID: ${SSLCOMMERZ_STORE_ID:-}
+      SSLCOMMERZ_STORE_PASSWORD: ${SSLCOMMERZ_STORE_PASSWORD:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${PAYMENT_PORT:-3003}:3003"
+    depends_on:
+      postgres-payment:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - b2b-net
+
+  bff:
+    build:
+      context: .
+      dockerfile: services/bff/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      BFF_PORT: 8080
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth:3001}
+      INVENTORY_SERVICE_URL: ${INVENTORY_SERVICE_URL:-http://inventory:8081}
+      SEARCH_SERVICE_URL: ${SEARCH_SERVICE_URL:-http://search:8000}
+      PAYMENT_SERVICE_URL: ${PAYMENT_SERVICE_URL:-http://payment:3003}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${BFF_PORT:-8080}:8080"
+    depends_on:
+      - auth
+      - inventory
+      - search
+      - payment
+    networks:
+      - b2b-net
+
+  # The frontend is hosted on Vercel in production (see deploy/vercel.json). This
+  # container provides local Compose/Kubernetes parity, talking to the BFF.
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      # Browser-facing BFF URL. For local Compose this is the host-published BFF port.
+      NEXT_PUBLIC_BFF_URL: ${NEXT_PUBLIC_BFF_URL:-http://localhost:8080}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - bff
+    networks:
+      - b2b-net
+

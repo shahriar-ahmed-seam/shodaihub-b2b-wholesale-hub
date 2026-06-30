@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface-muted text-brand-ink antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Locale-aware Bangla typography (Req 17.1) */
+  html[lang='bn'] body {
+    @apply font-bengali;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+    text-wrap: balance;
+  }
+
+  /* Always-visible, AA-contrast focus ring for keyboard users. */
+  :focus-visible {
+    outline: none;
+  }
+}
+
+@layer components {
+  /* Reusable section container — consistent gutters, capped reading width. */
+  .container-page {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Subtle dotted commerce texture for hero/section backgrounds (no image dependency). */
+  .bg-grid {
+    background-image: radial-gradient(rgba(15, 92, 77, 0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  .link-underline {
+    @apply text-brand-primary underline-offset-4 hover:underline;
+  }
+}
+
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

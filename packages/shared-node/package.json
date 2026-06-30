@@ -1,0 +1,38 @@
+{
+  "name": "@b2b/shared-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared cross-cutting libraries for the Node.js services: error envelope, correlation-id middleware, structured JSON logger, and HTTP status conventions.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "pretest": "npm run build",
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "peerDependencies": {
+    "express": "^4.19.2"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.15",
+    "rimraf": "^5.0.10",
+    "typescript": "^5.5.4"
+  }
+}

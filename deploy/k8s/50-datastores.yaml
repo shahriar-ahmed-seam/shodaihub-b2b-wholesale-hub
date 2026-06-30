@@ -1,0 +1,309 @@
+# ============================================================================
+# Datastores — Postgres (x3), Redis, ElasticSearch.
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │ PRODUCTION RECOMMENDATION: use MANAGED datastores instead of these        │
+# │ in-cluster StatefulSets. Point the ConfigMap/Secret URLs at:              │
+# │   - Managed PostgreSQL (RDS / Cloud SQL / Render PostgreSQL) — one DB or  │
+# │     instance per service (auth, inventory, notifications, payment).        │
+# │   - Managed Redis (ElastiCache / Memorystore / Render Redis).             │
+# │   - Managed ElasticSearch (Elastic Cloud / OpenSearch Service).           │
+# │ Then DELETE this file before applying — the app Deployments need no change │
+# │ because they read endpoints from b2b-config / b2b-secrets.                │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# The StatefulSets below exist so the stack can run end-to-end on a bare
+# cluster (dev / self-hosted) without external dependencies. They use modest
+# PVCs and are NOT tuned for production durability/HA.
+#
+# CREDENTIALS NOTE: these dev StatefulSets all read their POSTGRES_PASSWORD from
+# the single `INVENTORY_DB_PASSWORD` Secret key for simplicity. If you keep them,
+# make sure each service's `*_DB_URL` password in 02-secret.yaml matches this
+# value. For production with managed datastores this coupling goes away (each
+# service just gets its own connection-string Secret).
+# ============================================================================
+
+# ----------------------------- Postgres (auth) -----------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-auth
+  namespace: b2b
+  labels: { app: postgres-auth }
+spec:
+  clusterIP: None
+  selector: { app: postgres-auth }
+  ports: [{ name: pg, port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-auth
+  namespace: b2b
+spec:
+  serviceName: postgres-auth
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-auth }
+  template:
+    metadata:
+      labels: { app: postgres-auth }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports: [{ name: pg, containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_DB, value: "auth" }
+            - { name: POSTGRES_USER, value: "auth" }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: b2b-secrets, key: INVENTORY_DB_PASSWORD } }
+            - { name: PGDATA, value: "/var/lib/postgresql/data/pgdata" }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "auth", "-d", "auth"] }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 5Gi } }
+---
+# --------------------------- Postgres (inventory) ---------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-inventory
+  namespace: b2b
+  labels: { app: postgres-inventory }
+spec:
+  clusterIP: None
+  selector: { app: postgres-inventory }
+  ports: [{ name: pg, port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-inventory
+  namespace: b2b
+spec:
+  serviceName: postgres-inventory
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-inventory }
+  template:
+    metadata:
+      labels: { app: postgres-inventory }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports: [{ name: pg, containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_DB, value: "inventory" }
+            - { name: POSTGRES_USER, value: "inventory" }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: b2b-secrets, key: INVENTORY_DB_PASSWORD } }
+            - { name: PGDATA, value: "/var/lib/postgresql/data/pgdata" }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "inventory", "-d", "inventory"] }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 10Gi } }
+---
+# --------------------------- Postgres (notifications) -----------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-notif
+  namespace: b2b
+  labels: { app: postgres-notif }
+spec:
+  clusterIP: None
+  selector: { app: postgres-notif }
+  ports: [{ name: pg, port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-notif
+  namespace: b2b
+spec:
+  serviceName: postgres-notif
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-notif }
+  template:
+    metadata:
+      labels: { app: postgres-notif }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports: [{ name: pg, containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_DB, value: "notifications" }
+            - { name: POSTGRES_USER, value: "notifications" }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: b2b-secrets, key: INVENTORY_DB_PASSWORD } }
+            - { name: PGDATA, value: "/var/lib/postgresql/data/pgdata" }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "notifications", "-d", "notifications"] }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 5Gi } }
+---
+# ----------------------------- Postgres (payment) ---------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-payment
+  namespace: b2b
+  labels: { app: postgres-payment }
+spec:
+  clusterIP: None
+  selector: { app: postgres-payment }
+  ports: [{ name: pg, port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-payment
+  namespace: b2b
+spec:
+  serviceName: postgres-payment
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres-payment }
+  template:
+    metadata:
+      labels: { app: postgres-payment }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports: [{ name: pg, containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_DB, value: "payment" }
+            - { name: POSTGRES_USER, value: "payment" }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: b2b-secrets, key: INVENTORY_DB_PASSWORD } }
+            - { name: PGDATA, value: "/var/lib/postgresql/data/pgdata" }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "payment", "-d", "payment"] }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 5Gi } }
+---
+# --------------------------------- Redis ------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: b2b
+  labels: { app: redis }
+spec:
+  clusterIP: None
+  selector: { app: redis }
+  ports: [{ name: redis, port: 6379, targetPort: 6379 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: b2b
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+          # Keyspace notifications (Ex) are required by the reservation expiry reaper.
+          args: ["redis-server", "--appendonly", "yes", "--notify-keyspace-events", "Ex"]
+          ports: [{ name: redis, containerPort: 6379 }]
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 2Gi } }
+---
+# ------------------------------ ElasticSearch -------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: b2b
+  labels: { app: elasticsearch }
+spec:
+  clusterIP: None
+  selector: { app: elasticsearch }
+  ports: [{ name: http, port: 9200, targetPort: 9200 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: b2b
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels: { app: elasticsearch }
+  template:
+    metadata:
+      labels: { app: elasticsearch }
+    spec:
+      # ES needs vm.max_map_count >= 262144; set it via an init container with privileges.
+      initContainers:
+        - name: sysctl
+          image: busybox:1.36
+          command: ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
+          securityContext: { privileged: true }
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+          ports: [{ name: http, containerPort: 9200 }]
+          env:
+            - { name: discovery.type, value: "single-node" }
+            - { name: xpack.security.enabled, value: "false" }
+            - { name: ES_JAVA_OPTS, value: "-Xms512m -Xmx512m" }
+          readinessProbe:
+            httpGet: { path: /_cluster/health, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 10
+          volumeMounts:
+            - { name: data, mountPath: /usr/share/elasticsearch/data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 20Gi } }

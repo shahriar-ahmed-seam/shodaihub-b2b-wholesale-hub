@@ -1,0 +1,122 @@
+# ============================================================================
+# Deploy — on merge to main, build & push every service image, then trigger the
+# Render (backend) and Vercel (frontend) deploys (Req 20.4, 20.5).
+#
+# Images are pushed to GitHub Container Registry (GHCR) tagged with the commit
+# SHA and `latest`. Render/Vercel deploys are kicked via deploy-hook URLs stored
+# as repository secrets (placeholders below) so no platform tokens live in code.
+#
+# Required repository secrets (set in Settings → Secrets and variables → Actions):
+#   RENDER_DEPLOY_HOOK_BFF / _AUTH / _INVENTORY / _SEARCH / _PAYMENT / _NOTIFICATION
+#   VERCEL_DEPLOY_HOOK_FRONTEND
+# (GHCR auth uses the built-in GITHUB_TOKEN.)
+# ============================================================================
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # ----------------------- Build & push images (matrix) ----------------------
+  build-push:
+    name: build-push (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Node services + frontend build from the repo root (workspace context).
+          - { name: auth,         context: ".", dockerfile: services/auth/Dockerfile }
+          - { name: bff,          context: ".", dockerfile: services/bff/Dockerfile }
+          - { name: payment,      context: ".", dockerfile: services/payment/Dockerfile }
+          - { name: notification, context: ".", dockerfile: services/notification/Dockerfile }
+          - { name: frontend,     context: ".", dockerfile: frontend/Dockerfile }
+          # Inventory + search are self-contained build contexts.
+          - { name: inventory,    context: services/inventory, dockerfile: services/inventory/Dockerfile }
+          - { name: search,       context: services/search,    dockerfile: services/search/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.name }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # --------------------------- Trigger Render deploys ------------------------
+  # Each Render service has its own deploy hook. Hooks are no-ops if unset, so a
+  # fork without secrets configured won't fail the pipeline.
+  deploy-render:
+    name: deploy-render
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render service deploys
+        env:
+          HOOK_BFF: ${{ secrets.RENDER_DEPLOY_HOOK_BFF }}
+          HOOK_AUTH: ${{ secrets.RENDER_DEPLOY_HOOK_AUTH }}
+          HOOK_INVENTORY: ${{ secrets.RENDER_DEPLOY_HOOK_INVENTORY }}
+          HOOK_SEARCH: ${{ secrets.RENDER_DEPLOY_HOOK_SEARCH }}
+          HOOK_PAYMENT: ${{ secrets.RENDER_DEPLOY_HOOK_PAYMENT }}
+          HOOK_NOTIFICATION: ${{ secrets.RENDER_DEPLOY_HOOK_NOTIFICATION }}
+        run: |
+          set -euo pipefail
+          for hook in "$HOOK_AUTH" "$HOOK_INVENTORY" "$HOOK_SEARCH" \
+                      "$HOOK_PAYMENT" "$HOOK_NOTIFICATION" "$HOOK_BFF"; do
+            if [ -n "$hook" ]; then
+              echo "Triggering Render deploy hook..."
+              curl -fsS -X POST "$hook" > /dev/null
+            else
+              echo "Skipping an unset Render deploy hook."
+            fi
+          done
+
+  # --------------------------- Trigger Vercel deploy -------------------------
+  deploy-vercel:
+    name: deploy-vercel
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel deploy hook
+        env:
+          HOOK_FRONTEND: ${{ secrets.VERCEL_DEPLOY_HOOK_FRONTEND }}
+        run: |
+          set -euo pipefail
+          if [ -n "$HOOK_FRONTEND" ]; then
+            echo "Triggering Vercel deploy hook..."
+            curl -fsS -X POST "$HOOK_FRONTEND" > /dev/null
+          else
+            echo "VERCEL_DEPLOY_HOOK_FRONTEND not set; skipping (Vercel Git integration may handle this)."
+          fi

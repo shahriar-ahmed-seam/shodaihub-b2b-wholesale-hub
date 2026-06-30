@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+.next
+out
+services/inventory
+services/search
+**/*.lock
+package-lock.json

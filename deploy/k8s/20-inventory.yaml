@@ -1,0 +1,82 @@
+# ============================================================================
+# Inventory Service — Deployment + ClusterIP Service + HorizontalPodAutoscaler.
+# Internal only. Java 21 / Spring Boot 3 runtime image. Talks to Postgres + Redis.
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory
+  namespace: b2b
+  labels: { app: inventory, app.kubernetes.io/part-of: b2b-wholesale-hub }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: inventory }
+  template:
+    metadata:
+      labels: { app: inventory }
+    spec:
+      containers:
+        - name: inventory
+          image: b2b/inventory:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8081 }
+          env:
+            - { name: LOG_LEVEL,      valueFrom: { configMapKeyRef: { name: b2b-config, key: LOG_LEVEL } } }
+            - { name: INVENTORY_PORT, valueFrom: { configMapKeyRef: { name: b2b-config, key: INVENTORY_PORT } } }
+            - { name: REDIS_URL,      valueFrom: { configMapKeyRef: { name: b2b-config, key: REDIS_URL } } }
+            - { name: INVENTORY_DB_URL,      valueFrom: { secretKeyRef: { name: b2b-secrets, key: INVENTORY_DB_URL } } }
+            - { name: INVENTORY_DB_USER,     valueFrom: { secretKeyRef: { name: b2b-secrets, key: INVENTORY_DB_USER } } }
+            - { name: INVENTORY_DB_PASSWORD, valueFrom: { secretKeyRef: { name: b2b-secrets, key: INVENTORY_DB_PASSWORD } } }
+          # Spring Boot + JVM warmup is slower than the Node services, so probes
+          # start later and the liveness check tolerates a longer startup.
+          startupProbe:
+            httpGet: { path: /inventory/health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /inventory/health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /inventory/health, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory
+  namespace: b2b
+  labels: { app: inventory }
+spec:
+  type: ClusterIP
+  selector: { app: inventory }
+  ports:
+    - { name: http, port: 8081, targetPort: http }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: inventory
+  namespace: b2b
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: inventory
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 75 }

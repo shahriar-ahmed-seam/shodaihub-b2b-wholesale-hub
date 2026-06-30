@@ -1,0 +1,58 @@
+# Inventory Service configuration. All environment-specific values are injected via env vars
+# (Req 20.4). Defaults below target the local Docker Compose stack.
+server:
+  port: ${INVENTORY_PORT:8081}
+
+spring:
+  application:
+    name: inventory
+  datasource:
+    url: ${INVENTORY_DB_URL:jdbc:postgresql://localhost:5433/inventory}
+    username: ${INVENTORY_DB_USER:inventory}
+    password: ${INVENTORY_DB_PASSWORD:inventory}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        default_schema: inventory
+  flyway:
+    enabled: true
+    schemas: inventory
+    default-schema: inventory
+  data:
+    redis:
+      # Spring Data Redis (Lettuce) connection backing the reservation/locking system (Req 7).
+      url: ${REDIS_URL:redis://localhost:6379}
+
+# Reservation/locking tunables (Deep-Dive 2). TTL is 15 minutes; renewals are capped at 3.
+reservation:
+  ttl-millis: ${RESERVATION_TTL_MILLIS:900000}
+  max-renewals: ${RESERVATION_MAX_RENEWALS:3}
+  # Active expiry reaper sweeps every ~2s to restore sellable quantity within the 5s window (Req 7.5).
+  reaper:
+    fixed-delay-millis: ${RESERVATION_REAPER_DELAY_MILLIS:2000}
+  # Keyspace-notification expiry events are a secondary, best-effort reaper trigger.
+  keyspace-notifications:
+    enabled: ${RESERVATION_KEYSPACE_NOTIFICATIONS:true}
+
+# Redis backs the reservation/locking system (Milestone 5).
+redis:
+  url: ${REDIS_URL:redis://localhost:6379}
+
+# Health/readiness probe exposed at /inventory/health (mapped in Milestone 4).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    # The custom /inventory/health probe validates readiness; Redis being unavailable must not
+    # force the actuator aggregate health DOWN at startup.
+    redis:
+      enabled: false

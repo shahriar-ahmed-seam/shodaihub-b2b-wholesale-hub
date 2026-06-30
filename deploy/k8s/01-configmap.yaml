@@ -1,0 +1,40 @@
+# ============================================================================
+# Non-secret configuration (Req 19.4: secrets live in the Secret, not here).
+#
+# These are environment-specific but non-sensitive values: in-cluster service
+# URLs, ports, feature flags, and log level. Sensitive values (DB credentials,
+# JWT keys, payment provider secrets) are in 02-secret.yaml.
+#
+# In-cluster DNS: a Service named `auth` in namespace `b2b` is reachable at
+# `auth.b2b.svc.cluster.local` (or just `auth` from within the namespace).
+# ============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: b2b-config
+  namespace: b2b
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+
+  # --- Service ports (must match each Deployment's containerPort) ---
+  AUTH_PORT: "3001"
+  BFF_PORT: "8080"
+  INVENTORY_PORT: "8081"
+  SEARCH_PORT: "8000"
+  NOTIFICATION_PORT: "3002"
+  PAYMENT_PORT: "3003"
+
+  # --- In-cluster service URLs (ClusterIP DNS names) ---
+  AUTH_SERVICE_URL: "http://auth:3001"
+  INVENTORY_SERVICE_URL: "http://inventory:8081"
+  SEARCH_SERVICE_URL: "http://search:8000"
+  PAYMENT_SERVICE_URL: "http://payment:3003"
+
+  # --- Datastore endpoints (StatefulSets in 50-datastores.yaml, or managed) ---
+  REDIS_URL: "redis://redis:6379"
+  ELASTICSEARCH_URL: "http://elasticsearch:9200"
+
+  # --- Notification channel toggles (non-secret feature flags) ---
+  EMAIL_ENABLED: "false"
+  SMS_ENABLED: "false"

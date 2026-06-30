@@ -1,0 +1,8 @@
+# Inventory build context — exclude host build artifacts and caches.
+.gradle
+build
+.jqwik-database
+*.log
+.idea
+.vscode
+README.md

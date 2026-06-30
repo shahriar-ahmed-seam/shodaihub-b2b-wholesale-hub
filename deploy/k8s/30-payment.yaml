@@ -1,0 +1,86 @@
+# ============================================================================
+# Payment Gateway — Deployment + ClusterIP Service + HorizontalPodAutoscaler.
+# Internal only. Node.js 20 runtime image. Talks to Postgres, Inventory, Redis.
+#
+# NOTE: provider callbacks (bKash/Nagad/SSLCommerz) arrive from the public
+# internet but are routed THROUGH the BFF Ingress, not by exposing payment
+# directly. The BFF proxies `/payments/callback/{provider}` to this service.
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  namespace: b2b
+  labels: { app: payment, app.kubernetes.io/part-of: b2b-wholesale-hub }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: payment }
+  template:
+    metadata:
+      labels: { app: payment }
+    spec:
+      containers:
+        - name: payment
+          image: b2b/payment:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 3003 }
+          env:
+            - { name: NODE_ENV,     valueFrom: { configMapKeyRef: { name: b2b-config, key: NODE_ENV } } }
+            - { name: LOG_LEVEL,    valueFrom: { configMapKeyRef: { name: b2b-config, key: LOG_LEVEL } } }
+            - { name: PAYMENT_PORT, valueFrom: { configMapKeyRef: { name: b2b-config, key: PAYMENT_PORT } } }
+            - { name: INVENTORY_SERVICE_URL, valueFrom: { configMapKeyRef: { name: b2b-config, key: INVENTORY_SERVICE_URL } } }
+            - { name: REDIS_URL,             valueFrom: { configMapKeyRef: { name: b2b-config, key: REDIS_URL } } }
+            - { name: PAYMENT_DB_URL,            valueFrom: { secretKeyRef: { name: b2b-secrets, key: PAYMENT_DB_URL } } }
+            - { name: BKASH_API_KEY,             valueFrom: { secretKeyRef: { name: b2b-secrets, key: BKASH_API_KEY } } }
+            - { name: BKASH_API_SECRET,          valueFrom: { secretKeyRef: { name: b2b-secrets, key: BKASH_API_SECRET } } }
+            - { name: NAGAD_MERCHANT_ID,         valueFrom: { secretKeyRef: { name: b2b-secrets, key: NAGAD_MERCHANT_ID } } }
+            - { name: NAGAD_API_SECRET,          valueFrom: { secretKeyRef: { name: b2b-secrets, key: NAGAD_API_SECRET } } }
+            - { name: SSLCOMMERZ_STORE_ID,       valueFrom: { secretKeyRef: { name: b2b-secrets, key: SSLCOMMERZ_STORE_ID } } }
+            - { name: SSLCOMMERZ_STORE_PASSWORD, valueFrom: { secretKeyRef: { name: b2b-secrets, key: SSLCOMMERZ_STORE_PASSWORD } } }
+          readinessProbe:
+            httpGet: { path: /payments/health, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /payments/health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment
+  namespace: b2b
+  labels: { app: payment }
+spec:
+  type: ClusterIP
+  selector: { app: payment }
+  ports:
+    - { name: http, port: 3003, targetPort: http }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment
+  namespace: b2b
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }

@@ -1,0 +1,41 @@
+# ============================================================================
+# Ingress — exposes ONLY the BFF to the public internet, over TLS (Req 19.2).
+#
+# No other service has an Ingress; auth/inventory/search/payment/notification
+# are ClusterIP-only and reachable solely from inside the cluster. The browser
+# and payment-provider callbacks reach the platform exclusively through the BFF.
+#
+# Assumptions (adjust to your cluster):
+#   - An ingress controller is installed (nginx shown here).
+#   - cert-manager issues the TLS cert via the referenced ClusterIssuer. If you
+#     terminate TLS at a cloud load balancer instead, drop the cert-manager
+#     annotation and the `tls:` block and let the LB hold the certificate.
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bff
+  namespace: b2b
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Match the BFF's own request-body size limit.
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.b2b-wholesale-hub.example.com
+      secretName: bff-tls
+  rules:
+    - host: api.b2b-wholesale-hub.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bff
+                port:
+                  number: 8080

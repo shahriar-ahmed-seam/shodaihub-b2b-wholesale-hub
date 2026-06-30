@@ -1,0 +1,48 @@
+# Root .dockerignore — applies to root-context builds (Node services + frontend).
+# Keeps build contexts small and prevents host artifacts from leaking into images.
+
+# Dependencies (reinstalled inside the image)
+**/node_modules
+
+# Build outputs
+**/dist
+**/.next
+**/build
+**/out
+
+# Java / Gradle build artifacts (inventory is built in its own context, but exclude anyway)
+services/inventory/.gradle
+services/inventory/build
+services/inventory/.jqwik-database
+
+# Python caches (search is built in its own context, but exclude anyway)
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.hypothesis
+**/*.pyc
+
+# VCS / IDE / OS
+.git
+.gitignore
+.github
+**/.vscode
+**/.idea
+**/.DS_Store
+
+# Local env + secrets (must be injected at runtime, never baked in)
+.env
+**/.env
+.env.*
+!.env.example
+
+# Logs and test reports
+**/*.log
+**/coverage
+**/.turbo
+
+# Specs / docs (not needed at runtime)
+.kiro
+deploy
+**/README.md

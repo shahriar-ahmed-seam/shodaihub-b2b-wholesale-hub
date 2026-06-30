@@ -1,0 +1,56 @@
+[project]
+name = "b2b-search"
+version = "0.1.0"
+description = "Search Service (Python 3.12 + FastAPI + ElasticSearch 8). Implemented in Milestone 7."
+readme = "README.md"
+# Containers run Python 3.12 (see Dockerfile); the floor is kept at 3.10 so the suite can be
+# installed and run on locally-available interpreters. Code stays 3.10+ compatible.
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.6",
+    "pydantic>=2.9.0",
+    "elasticsearch>=8.15.0,<9.0.0",
+    "aiohttp>=3.10.0",
+    "redis>=5.0.8",
+    "structlog>=24.4.0",
+    "httpx>=0.27.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    # Hypothesis — property-based testing library for the Search Service (min 100 iterations).
+    "hypothesis>=6.112.0",
+    "testcontainers[elasticsearch]>=4.8.1",
+    "ruff>=0.6.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# Ruff is the Python linter + formatter (the Python equivalent of ESLint + Prettier / Black).
+[tool.ruff]
+# Containers run 3.12; lint target is kept at the local floor (3.10) so suggested rewrites
+# stay runnable on the locally-available interpreter.
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "es: tests that require an ElasticSearch testcontainer (skipped if Docker is unavailable)",
+]

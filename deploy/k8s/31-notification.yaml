@@ -1,0 +1,78 @@
+# ============================================================================
+# Notification Service — Deployment + ClusterIP Service + HorizontalPodAutoscaler.
+# Internal only. Node.js 20 runtime image. Consumes Redis Streams, writes Postgres.
+# Not reachable from the Ingress; it is an event consumer + in-app inbox API.
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification
+  namespace: b2b
+  labels: { app: notification, app.kubernetes.io/part-of: b2b-wholesale-hub }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: notification }
+  template:
+    metadata:
+      labels: { app: notification }
+    spec:
+      containers:
+        - name: notification
+          image: b2b/notification:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 3002 }
+          env:
+            - { name: NODE_ENV,          valueFrom: { configMapKeyRef: { name: b2b-config, key: NODE_ENV } } }
+            - { name: LOG_LEVEL,         valueFrom: { configMapKeyRef: { name: b2b-config, key: LOG_LEVEL } } }
+            - { name: NOTIFICATION_PORT, valueFrom: { configMapKeyRef: { name: b2b-config, key: NOTIFICATION_PORT } } }
+            - { name: REDIS_URL,     valueFrom: { configMapKeyRef: { name: b2b-config, key: REDIS_URL } } }
+            - { name: EMAIL_ENABLED, valueFrom: { configMapKeyRef: { name: b2b-config, key: EMAIL_ENABLED } } }
+            - { name: SMS_ENABLED,   valueFrom: { configMapKeyRef: { name: b2b-config, key: SMS_ENABLED } } }
+            - { name: NOTIF_DB_URL,  valueFrom: { secretKeyRef: { name: b2b-secrets, key: NOTIF_DB_URL } } }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification
+  namespace: b2b
+  labels: { app: notification }
+spec:
+  type: ClusterIP
+  selector: { app: notification }
+  ports:
+    - { name: http, port: 3002, targetPort: http }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: notification
+  namespace: b2b
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notification
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
