@@ -60,3 +60,6 @@ docker-data/
 
 # ---------- Local-only compose override (contains a dev JWT keypair) ----------
 docker-compose.override.yml
+
+# ---------- Vercel ----------
+.vercel/

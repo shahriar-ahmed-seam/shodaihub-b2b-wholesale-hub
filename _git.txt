@@ -1,0 +1,18 @@
+commit exit: 0
+repo create exit: 0
+https://github.com/shahriar-ahmed-seam/shodaihub-b2b-wholesale-hub
+branch 'main' set up to track 'origin/main'.
+gh : To https://github.com/shahriar-ahmed-seam/shodaihub-b2b
+-wholesale-hub.git
+At C:\Projects\B2B-Wholesale-Hub\_git2.ps1:11 char:1
++ gh repo create shodaihub-b2b-wholesale-hub --public 
+--source . --remo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (To https://git 
+   h...olesale-hub.git:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ * [new branch]      HEAD -> main
+topics exit: 0
+repo url: https://github.com/shahriar-ahmed-seam/shodaihub-b2b-wholesale-hub

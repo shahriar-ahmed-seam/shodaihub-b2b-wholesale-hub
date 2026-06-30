@@ -1,0 +1,3 @@
+link exit: 0
+deploy exit: 1
+URLs: https://shodaihub-b2b-b93adyp2l-shahriars-projects-c88d75b5.vercel.app
